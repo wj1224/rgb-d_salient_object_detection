@@ -15,7 +15,7 @@ import sys
 import random
 
 from PIL import Image
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 def get_name(path):
 	name, _ = os.path.splitext(os.path.basename(path))

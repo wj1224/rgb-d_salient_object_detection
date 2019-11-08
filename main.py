@@ -21,6 +21,7 @@ parser.add_argument("--output_dir", required=True, help="Folder path to save out
 parser.add_argument("--tensorboard_dir", required=False, help="Folder path to save tensorboard logs")
 parser.add_argument("--seed", type=int)
 parser.add_argument("--checkpoint", default=None, help="Folder path to resume training from or use for testing")
+parser.add_argument("--pretrained", action='store_true', help="Using pretrained model")
 parser.add_argument("--n_epochs", type=int, default=0, help="Load checkpoint from trained models with n_epochs")
 parser.add_argument("--max_epochs", type=int, help="Number of training epochs")
 parser.add_argument("--batch_size", type=int, default=16, help="Number of images in batch")
@@ -48,6 +49,9 @@ random.seed(args.seed)
 
 if not os.path.exists(args.output_dir):
 	os.makedirs(args.output_dir)
+
+if args.mode == "test":
+	args.batch_size = 1
 
 dataloader = load_images(args)
 device = torch.device('cuda:0' if args.cuda else 'cpu')
@@ -128,7 +132,10 @@ else:
 	if args.cuda:
 		netG = netG.cuda()
 
-	netG_model_path = '{}/netG_model_epoch_{}.pth'.format(args.checkpoint, args.n_epochs)
+	if args.pretrained:
+		netG_model_path = '{}/netG_model_pretrained.pth'.format(args.checkpoint)
+	else:
+		netG_model_path = '{}/netG_model_epoch_{}.pth'.format(args.checkpoint, args.n_epochs)
 	netG.load_state_dict(torch.load(netG_model_path))
 	netG.eval()
 
