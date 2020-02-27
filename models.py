@@ -1,383 +1,292 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from torch.autograd import Variable
+from torchvision.utils import save_image
 
-def weights_init(m):
-	classname = m.__class__.__name__
-	if classname.find('Conv') != -1:
-		m.weight.data.normal_(0.0, 0.02)
-	elif classname.find('BatchNorm2d') != -1:
-		m.weight.data.normal_(1.0, 0.02)
-		m.bias.data.fill_(0)
+class ConvBlock(nn.Module):
+	def __init__(self, dim_in, dim_out):
+		super(ConvBlock, self).__init__()
 
-def create_generator(input_nc, output_nc, ngf):
-	netG = Generator(input_nc, output_nc, ngf)
-	netG.apply(weights_init)
-	return netG
+		self.layer = nn.Sequential(nn.Conv2d(dim_in, dim_out, kernel_size=4, stride=2, padding=1),
+		nn.BatchNorm2d(dim_out),
+		nn.LeakyReLU(0.2, inplace=True))
 
-def create_discriminator(input_nc, ndf):
-	netD = Discriminator(input_nc, ndf)
-	netD.apply(weights_init)
-	return netD
+	def forward(self, x):
+		return self.layer(x)
+
+class UpconvBlock(nn.Module):
+	def __init__(self, dim_in, dim_out):
+		super(UpconvBlock, self).__init__()
+
+		self.layer = nn.Sequential(nn.ConvTranspose2d(dim_in, dim_out, kernel_size=4, stride=2, padding=1),
+		nn.BatchNorm2d(dim_out),
+		nn.ReLU(inplace=True))
+
+	def forward(self, x):
+		return self.layer(x)
 
 class Generator(nn.Module):
-	def __init__(self, input_nc, output_nc, ngf):
+	def __init__(self, ngf):
 		super(Generator, self).__init__()
-		self.input_nc = input_nc
-		self.output_nc = output_nc
 		self.ngf = ngf
 
 		# Encoder
 
-		self.encoder1_1_conv = nn.Conv2d(input_nc, ngf, kernel_size=4, stride=2, padding=1)
-		self.encoder1_1_lrelu = nn.LeakyReLU(0.2, True)
-		self.encoder2_1_conv = nn.Conv2d(input_nc, ngf, kernel_size=4, stride=2, padding=1)
-		self.encoder2_1_lrelu = nn.LeakyReLU(0.2, True)
+		self.rgb_e1 = nn.Sequential(nn.Conv2d(3, ngf, kernel_size=4, stride=2, padding=1),
+		nn.LeakyReLU(0.2, inplace=True))
+		self.depth_e1 = nn.Sequential(nn.Conv2d(1, ngf, kernel_size=4, stride=2, padding=1),
+		nn.LeakyReLU(0.2, inplace=True))
 
-		self.encoder1_2_conv = nn.Conv2d(ngf, ngf * 2, kernel_size=4, stride=2, padding=1)
-		self.encoder1_2_norm = nn.BatchNorm2d(ngf * 2)
-		self.encoder1_2_lrelu = nn.LeakyReLU(0.2, True)
-		self.encoder2_2_conv = nn.Conv2d(ngf, ngf * 2, kernel_size=4, stride=2, padding=1)
-		self.encoder2_2_norm = nn.BatchNorm2d(ngf * 2)
-		self.encoder2_2_lrelu = nn.LeakyReLU(0.2, True)
-
-		self.encoder1_3_conv = nn.Conv2d(ngf * 2, ngf * 4, kernel_size=4, stride=2, padding=1)
-		self.encoder1_3_norm = nn.BatchNorm2d(ngf * 4)
-		self.encoder1_3_lrelu = nn.LeakyReLU(0.2, True)
-		self.encoder2_3_conv = nn.Conv2d(ngf * 2, ngf * 4, kernel_size=4, stride=2, padding=1)
-		self.encoder2_3_norm = nn.BatchNorm2d(ngf * 4)
-		self.encoder2_3_lrelu = nn.LeakyReLU(0.2, True)
-
-		self.encoder1_4_conv = nn.Conv2d(ngf * 4, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder1_4_norm = nn.BatchNorm2d(ngf * 8)
-		self.encoder1_4_lrelu = nn.LeakyReLU(0.2, True)
-		self.encoder2_4_conv = nn.Conv2d(ngf * 4, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder2_4_norm = nn.BatchNorm2d(ngf * 8)
-		self.encoder2_4_lrelu = nn.LeakyReLU(0.2, True)
-
-		self.encoder1_5_conv = nn.Conv2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder1_5_norm = nn.BatchNorm2d(ngf * 8)
-		self.encoder1_5_lrelu = nn.LeakyReLU(0.2, True)
-		self.encoder2_5_conv = nn.Conv2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder2_5_norm = nn.BatchNorm2d(ngf * 8)
-		self.encoder2_5_lrelu = nn.LeakyReLU(0.2, True)
-
-		self.encoder1_6_conv = nn.Conv2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder1_6_norm = nn.BatchNorm2d(ngf * 8)
-		self.encoder1_6_lrelu = nn.LeakyReLU(0.2, True)
-		self.encoder2_6_conv = nn.Conv2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder2_6_norm = nn.BatchNorm2d(ngf * 8)
-		self.encoder2_6_lrelu = nn.LeakyReLU(0.2, True)
-
-		self.encoder1_7_conv = nn.Conv2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder1_7_norm = nn.BatchNorm2d(ngf * 8)
-		self.encoder1_7_lrelu = nn.LeakyReLU(0.2, True)
-		self.encoder2_7_conv = nn.Conv2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder2_7_norm = nn.BatchNorm2d(ngf * 8)
-		self.encoder2_7_lrelu = nn.LeakyReLU(0.2, True)
-
-		self.encoder1_8_conv = nn.Conv2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder1_8_norm = nn.BatchNorm2d(ngf * 8)
-		self.encoder2_8_conv = nn.Conv2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.encoder2_8_norm = nn.BatchNorm2d(ngf * 8)
+		self.rgb_e2 = ConvBlock(ngf, ngf * 2)
+		self.depth_e2 = ConvBlock(ngf, ngf * 2)
+		self.rgb_e3 = ConvBlock(ngf * 2, ngf * 4)
+		self.depth_e3 = ConvBlock(ngf * 2, ngf * 4)
+		self.rgb_e4 = ConvBlock(ngf * 4, ngf * 8)
+		self.depth_e4 = ConvBlock(ngf * 4, ngf * 8)
+		self.rgb_e5 = ConvBlock(ngf * 8, ngf * 8)
+		self.depth_e5 = ConvBlock(ngf * 8, ngf * 8)
+		self.rgb_e6 = ConvBlock(ngf * 8, ngf * 8)
+		self.depth_e6 = ConvBlock(ngf * 8, ngf * 8)
+		self.rgb_e7 = ConvBlock(ngf * 8, ngf * 8)
+		self.depth_e7 = ConvBlock(ngf * 8, ngf * 8)
+		self.rgb_e8 = ConvBlock(ngf * 8, ngf * 8)
+		self.depth_e8 = ConvBlock(ngf * 8, ngf * 8)
 
 		# Decoder
 
-		self.decoder1_8_relu = nn.ReLU(True)
-		self.decoder1_8_deconv = nn.ConvTranspose2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.decoder1_8_norm = nn.BatchNorm2d(ngf * 8)
+		self.rgb_d1 = UpconvBlock(ngf * 8, ngf * 8)
+		self.depth_d1 = UpconvBlock(ngf * 8, ngf * 8)
+		self.rgb_d2 = UpconvBlock(ngf * 16, ngf * 8)
+		self.depth_d2 = UpconvBlock(ngf * 16, ngf * 8)
+		self.rgb_d3 = UpconvBlock(ngf * 16, ngf * 8)
+		self.depth_d3 = UpconvBlock(ngf * 16, ngf * 8)
+		self.rgb_d4 = UpconvBlock(ngf * 16, ngf * 8)
+		self.depth_d4 = UpconvBlock(ngf * 16, ngf * 8)
+		self.rgb_d5 = UpconvBlock(ngf * 16, ngf * 4)
+		self.depth_d5 = UpconvBlock(ngf * 16, ngf * 4)
+		self.rgb_d6 = UpconvBlock(ngf * 8, ngf * 2)
+		self.depth_d6 = UpconvBlock(ngf * 8, ngf * 2)
+		self.rgb_d7 = UpconvBlock(ngf * 4, ngf)
+		self.depth_d7 = UpconvBlock(ngf * 4, ngf)
+		self.rgb_d8 = UpconvBlock(ngf * 2, ngf)
+		self.depth_d8 = UpconvBlock(ngf * 2, ngf)
 
-		self.decoder2_8_relu = nn.ReLU(True)
-		self.decoder2_8_deconv = nn.ConvTranspose2d(ngf * 8, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.decoder2_8_norm = nn.BatchNorm2d(ngf * 8)
+		# Head
 
-		self.decoder1_7_relu = nn.ReLU(True)
-		self.decoder1_7_deconv = nn.ConvTranspose2d(ngf * 16, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.decoder1_7_norm = nn.BatchNorm2d(ngf * 8)
+		self.conv = nn.Sequential(nn.Conv2d(ngf * 2, ngf, kernel_size=1, stride=1, padding=0),
+		nn.BatchNorm2d(ngf),
+		nn.ReLU(inplace=True),
+		nn.Conv2d(ngf, 1, kernel_size=3, stride=1, padding=1),
+		nn.Sigmoid())
 
-		self.decoder2_7_relu = nn.ReLU(True)
-		self.decoder2_7_deconv = nn.ConvTranspose2d(ngf * 16, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.decoder2_7_norm = nn.BatchNorm2d(ngf * 8)
+	def forward(self, RGB, Depth):
+		RGB_E1 = self.rgb_e1(RGB)
+		Depth_E1 = self.depth_e1(Depth)
+		RGB_E2 = self.rgb_e2(RGB_E1)
+		Depth_E2 = self.depth_e2(Depth_E1)
+		RGB_E3 = self.rgb_e3(RGB_E2)
+		Depth_E3 = self.depth_e3(Depth_E2)
+		RGB_E4 = self.rgb_e4(RGB_E3)
+		Depth_E4 = self.depth_e4(Depth_E3)
+		RGB_E5 = self.rgb_e5(RGB_E4)
+		Depth_E5 = self.depth_e5(Depth_E4)
+		RGB_E6 = self.rgb_e6(RGB_E5)
+		Depth_E6 = self.depth_e6(Depth_E5)
+		RGB_E7 = self.rgb_e7(RGB_E6)
+		Depth_E7 = self.depth_e7(Depth_E6)
+		RGB_E8 = self.rgb_e8(RGB_E7)
+		Depth_E8 = self.depth_e8(Depth_E7)
 
-		self.decoder1_6_relu = nn.ReLU(True)
-		self.decoder1_6_deconv = nn.ConvTranspose2d(ngf * 16, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.decoder1_6_norm = nn.BatchNorm2d(ngf * 8)
+		RGB_D = self.rgb_d1(RGB_E8)
+		Depth_D = self.depth_d1(Depth_E8)
 
-		self.decoder2_6_relu = nn.ReLU(True)
-		self.decoder2_6_deconv = nn.ConvTranspose2d(ngf * 16, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.decoder2_6_norm = nn.BatchNorm2d(ngf * 8)
+		RGB_D = torch.cat([RGB_D, RGB_E7], dim=1)
+		Depth_D = torch.cat([Depth_D, Depth_E7], dim=1)
+		RGB_D = self.rgb_d2(RGB_D)
+		Depth_D = self.depth_d2(Depth_D)
 
-		self.decoder1_5_relu = nn.ReLU(True)
-		self.decoder1_5_deconv = nn.ConvTranspose2d(ngf * 16, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.decoder1_5_norm = nn.BatchNorm2d(ngf * 8)
+		RGB_D = torch.cat([RGB_D, RGB_E6], dim=1)
+		Depth_D = torch.cat([Depth_D, Depth_E6], dim=1)
+		RGB_D = self.rgb_d3(RGB_D)
+		Depth_D = self.depth_d3(Depth_D)
 
-		self.decoder2_5_relu = nn.ReLU(True)
-		self.decoder2_5_deconv = nn.ConvTranspose2d(ngf * 16, ngf * 8, kernel_size=4, stride=2, padding=1)
-		self.decoder2_5_norm = nn.BatchNorm2d(ngf * 8)
+		RGB_D = torch.cat([RGB_D, RGB_E5], dim=1)
+		Depth_D = torch.cat([Depth_D, Depth_E5], dim=1)
+		RGB_D = self.rgb_d4(RGB_D)
+		Depth_D = self.depth_d4(Depth_D)
 
-		self.decoder1_4_relu = nn.ReLU(True)
-		self.decoder1_4_deconv = nn.ConvTranspose2d(ngf * 16, ngf * 4, kernel_size=4, stride=2, padding=1)
-		self.decoder1_4_norm = nn.BatchNorm2d(ngf * 4)
+		RGB_D = torch.cat([RGB_D, RGB_E4], dim=1)
+		Depth_D = torch.cat([Depth_D, Depth_E4], dim=1)
+		RGB_D = self.rgb_d5(RGB_D)
+		Depth_D = self.depth_d5(Depth_D)
 
-		self.decoder2_4_relu = nn.ReLU(True)
-		self.decoder2_4_deconv = nn.ConvTranspose2d(ngf * 16, ngf * 4, kernel_size=4, stride=2, padding=1)
-		self.decoder2_4_norm = nn.BatchNorm2d(ngf * 4)
+		RGB_D = torch.cat([RGB_D, RGB_E3], dim=1)
+		Depth_D = torch.cat([Depth_D, Depth_E3], dim=1)
+		RGB_D = self.rgb_d6(RGB_D)
+		Depth_D = self.depth_d6(Depth_D)
 
-		self.decoder1_3_relu = nn.ReLU(True)
-		self.decoder1_3_deconv = nn.ConvTranspose2d(ngf * 8, ngf * 2, kernel_size=4, stride=2, padding=1)
-		self.decoder1_3_norm = nn.BatchNorm2d(ngf * 2)
+		RGB_D = torch.cat([RGB_D, RGB_E2], dim=1)
+		Depth_D = torch.cat([Depth_D, Depth_E2], dim=1)
+		RGB_D = self.rgb_d7(RGB_D)
+		Depth_D = self.depth_d7(Depth_D)
 
-		self.decoder2_3_relu = nn.ReLU(True)
-		self.decoder2_3_deconv = nn.ConvTranspose2d(ngf * 8, ngf * 2, kernel_size=4, stride=2, padding=1)
-		self.decoder2_3_norm = nn.BatchNorm2d(ngf * 2)
+		RGB_D = torch.cat([RGB_D, RGB_E1], dim=1)
+		Depth_D = torch.cat([Depth_D, Depth_E1], dim=1)
+		RGB_D = self.rgb_d8(RGB_D)
+		Depth_D = self.depth_d8(Depth_D)
 
-		self.decoder1_2_relu = nn.ReLU(True)
-		self.decoder1_2_deconv = nn.ConvTranspose2d(ngf * 4, ngf, kernel_size=4, stride=2, padding=1)
-		self.decoder1_2_norm = nn.BatchNorm2d(ngf)
-
-		self.decoder2_2_relu = nn.ReLU(True)
-		self.decoder2_2_deconv = nn.ConvTranspose2d(ngf * 4, ngf, kernel_size=4, stride=2, padding=1)
-		self.decoder2_2_norm = nn.BatchNorm2d(ngf)
-
-		self.decoder1_1_relu = nn.ReLU(True)
-		self.decoder1_1_deconv = nn.ConvTranspose2d(ngf * 2, ngf, kernel_size=4, stride=2, padding=1)
-		self.decoder1_1_norm = nn.BatchNorm2d(ngf)
-		self.decoder2_1_relu = nn.ReLU(True)
-		self.decoder2_1_deconv = nn.ConvTranspose2d(ngf * 2, ngf, kernel_size=4, stride=2, padding=1)
-		self.decoder2_1_norm = nn.BatchNorm2d(ngf)
-
-		self.decoder1_0_relu = nn.ReLU(True)
-		self.decoder1_0_conv = nn.Conv2d(ngf, output_nc, kernel_size=1)
-		self.decoder1_0_norm = nn.BatchNorm2d(1)
-		self.decoder2_0_relu = nn.ReLU(True)
-		self.decoder2_0_conv = nn.Conv2d(ngf, output_nc, kernel_size=1)
-		self.decoder2_0_norm = nn.BatchNorm2d(1)
-
-		self.decoder0 = nn.Sigmoid()
-
-	def forward(self, RGB, depth):
-		RGB_conv1 = self.encoder1_1_conv(RGB)
-		Depth_conv1 = self.encoder2_1_conv(depth)
-
-		RGB_conv2 = self.encoder1_1_lrelu(RGB_conv1)
-		RGB_conv2 = self.encoder1_2_conv(RGB_conv2)
-		RGB_conv2 = self.encoder1_2_norm(RGB_conv2)
-		Depth_conv2 = self.encoder2_1_lrelu(Depth_conv1)
-		Depth_conv2 = self.encoder2_2_conv(Depth_conv2)
-		Depth_conv2 = self.encoder2_2_norm(Depth_conv2)
-
-		RGB_conv3 = self.encoder1_2_lrelu(RGB_conv2)
-		RGB_conv3 = self.encoder1_3_conv(RGB_conv3)
-		RGB_conv3 = self.encoder1_3_norm(RGB_conv3)
-		Depth_conv3 = self.encoder2_2_lrelu(Depth_conv2)
-		Depth_conv3 = self.encoder2_3_conv(Depth_conv3)
-		Depth_conv3 = self.encoder2_3_norm(Depth_conv3)
-
-		RGB_conv4 = self.encoder1_3_lrelu(RGB_conv3)
-		RGB_conv4 = self.encoder1_4_conv(RGB_conv4)
-		RGB_conv4 = self.encoder1_4_norm(RGB_conv4)
-		Depth_conv4 = self.encoder2_3_lrelu(Depth_conv3)
-		Depth_conv4 = self.encoder2_4_conv(Depth_conv4)
-		Depth_conv4 = self.encoder2_4_norm(Depth_conv4)
-
-		RGB_conv5 = self.encoder1_4_lrelu(RGB_conv4)
-		RGB_conv5 = self.encoder1_5_conv(RGB_conv5)
-		RGB_conv5 = self.encoder1_5_norm(RGB_conv5)
-		Depth_conv5 = self.encoder2_4_lrelu(Depth_conv4)
-		Depth_conv5 = self.encoder2_5_conv(Depth_conv5)
-		Depth_conv5 = self.encoder2_5_norm(Depth_conv5)
-
-		RGB_conv6 = self.encoder1_5_lrelu(RGB_conv5)
-		RGB_conv6 = self.encoder1_6_conv(RGB_conv6)
-		RGB_conv6 = self.encoder1_6_norm(RGB_conv6)
-		Depth_conv6 = self.encoder2_5_lrelu(Depth_conv5)
-		Depth_conv6 = self.encoder2_6_conv(Depth_conv6)
-		Depth_conv6 = self.encoder2_6_norm(Depth_conv6)
-
-		RGB_conv7 = self.encoder1_6_lrelu(RGB_conv6)
-		RGB_conv7 = self.encoder1_7_conv(RGB_conv7)
-		RGB_conv7 = self.encoder1_7_norm(RGB_conv7)
-		Depth_conv7 = self.encoder2_6_lrelu(Depth_conv6)
-		Depth_conv7 = self.encoder2_7_conv(Depth_conv7)
-		Depth_conv7 = self.encoder2_7_norm(Depth_conv7)
-
-		RGB_conv8 = self.encoder1_7_lrelu(RGB_conv7)
-		RGB_conv8 = self.encoder1_8_conv(RGB_conv8)
-		RGB_conv8 = self.encoder1_8_norm(RGB_conv8)
-		Depth_conv8 = self.encoder2_7_lrelu(Depth_conv7)
-		Depth_conv8 = self.encoder2_8_conv(Depth_conv8)
-		Depth_conv8 = self.encoder2_8_norm(Depth_conv8)
-
-		RGB_deconv8 = self.decoder1_8_relu(RGB_conv8)
-		RGB_deconv8 = self.decoder1_8_deconv(RGB_deconv8)
-		RGB_deconv8 = self.decoder1_8_norm(RGB_deconv8)
-
-		Depth_deconv8 = self.decoder2_8_relu(Depth_conv8)
-		Depth_deconv8 = self.decoder2_8_deconv(Depth_deconv8)
-		Depth_deconv8 = self.decoder2_8_norm(Depth_deconv8)
-
-		RGB_deconv7 = torch.cat([RGB_deconv8, RGB_conv7], dim=1)
-		RGB_deconv7 = self.decoder1_7_relu(RGB_deconv7)
-		RGB_deconv7 = self.decoder1_7_deconv(RGB_deconv7)
-		RGB_deconv7 = self.decoder1_7_norm(RGB_deconv7)
-
-		Depth_deconv7 = torch.cat([Depth_deconv8, Depth_conv7], dim=1)
-		Depth_deconv7 = self.decoder2_7_relu(Depth_deconv7)
-		Depth_deconv7 = self.decoder2_7_deconv(Depth_deconv7)
-		Depth_deconv7 = self.decoder2_7_norm(Depth_deconv7)
-
-		RGB_deconv6 = torch.cat([RGB_deconv7, RGB_conv6], dim=1)
-		RGB_deconv6 = self.decoder1_6_relu(RGB_deconv6)
-		RGB_deconv6 = self.decoder1_6_deconv(RGB_deconv6)
-		RGB_deconv6 = self.decoder1_6_norm(RGB_deconv6)
-
-		Depth_deconv6 = torch.cat([Depth_deconv7, Depth_conv6], dim=1)
-		Depth_deconv6 = self.decoder2_6_relu(Depth_deconv6)
-		Depth_deconv6 = self.decoder2_6_deconv(Depth_deconv6)
-		Depth_deconv6 = self.decoder2_6_norm(Depth_deconv6)
-
-		RGB_deconv5 = torch.cat([RGB_deconv6, RGB_conv5], dim=1)
-		RGB_deconv5 = self.decoder1_5_relu(RGB_deconv5)
-		RGB_deconv5 = self.decoder1_5_deconv(RGB_deconv5)
-		RGB_deconv5 = self.decoder1_5_norm(RGB_deconv5)
-
-		Depth_deconv5 = torch.cat([Depth_deconv6, Depth_conv5], dim=1)
-		Depth_deconv5 = self.decoder2_5_relu(Depth_deconv5)
-		Depth_deconv5 = self.decoder2_5_deconv(Depth_deconv5)
-		Depth_deconv5 = self.decoder2_5_norm(Depth_deconv5)
-
-		RGB_deconv4 = torch.cat([RGB_deconv5, RGB_conv4], dim=1)
-		RGB_deconv4 = self.decoder1_4_relu(RGB_deconv4)
-		RGB_deconv4 = self.decoder1_4_deconv(RGB_deconv4)
-		RGB_deconv4 = self.decoder1_4_norm(RGB_deconv4)
-
-		Depth_deconv4 = torch.cat([Depth_deconv5, Depth_conv4], dim=1)
-		Depth_deconv4 = self.decoder2_4_relu(Depth_deconv4)
-		Depth_deconv4 = self.decoder2_4_deconv(Depth_deconv4)
-		Depth_deconv4 = self.decoder2_4_norm(Depth_deconv4)
-
-		RGB_deconv3 = torch.cat([RGB_deconv4, RGB_conv3], dim=1)
-		RGB_deconv3 = self.decoder1_3_relu(RGB_deconv3)
-		RGB_deconv3 = self.decoder1_3_deconv(RGB_deconv3)
-		RGB_deconv3 = self.decoder1_3_norm(RGB_deconv3)
-
-		Depth_deconv3 = torch.cat([Depth_deconv4, Depth_conv3], dim=1)
-		Depth_deconv3 = self.decoder2_3_relu(Depth_deconv3)
-		Depth_deconv3 = self.decoder2_3_deconv(Depth_deconv3)
-		Depth_deconv3 = self.decoder2_3_norm(Depth_deconv3)
-
-		RGB_deconv2 = torch.cat([RGB_deconv3, RGB_conv2], dim=1)
-		RGB_deconv2 = self.decoder1_2_relu(RGB_deconv2)
-		RGB_deconv2 = self.decoder1_2_deconv(RGB_deconv2)
-		RGB_deconv2 = self.decoder1_2_norm(RGB_deconv2)
-
-		Depth_deconv2 = torch.cat([Depth_deconv3, Depth_conv2], dim=1)
-		Depth_deconv2 = self.decoder2_2_relu(Depth_deconv2)
-		Depth_deconv2 = self.decoder2_2_deconv(Depth_deconv2)
-		Depth_deconv2 = self.decoder2_2_norm(Depth_deconv2)
-
-		RGB_deconv1 = torch.cat([RGB_deconv2, RGB_conv1], dim=1)
-		RGB_deconv1 = self.decoder1_1_relu(RGB_deconv1)
-		RGB_deconv1 = self.decoder1_1_deconv(RGB_deconv1)
-		RGB_deconv1 = self.decoder1_1_norm(RGB_deconv1)
-
-		Depth_deconv1 = torch.cat([Depth_deconv2, Depth_conv1], dim=1)
-		Depth_deconv1 = self.decoder2_1_relu(Depth_deconv1)
-		Depth_deconv1 = self.decoder2_1_deconv(Depth_deconv1)
-		Depth_deconv1 = self.decoder2_1_norm(Depth_deconv1)
-
-		RGB_deconv0 = self.decoder1_0_relu(RGB_deconv1)
-		RGB_deconv0 = self.decoder1_0_conv(RGB_deconv0)
-		RGB_deconv0 = self.decoder1_0_norm(RGB_deconv0)
-		Depth_deconv0 = self.decoder2_0_relu(Depth_deconv1)
-		Depth_deconv0 = self.decoder2_0_conv(Depth_deconv0)
-		Depth_deconv0 = self.decoder2_0_norm(Depth_deconv0)
-
-		output = torch.add(RGB_deconv0, Depth_deconv0)
-		output = self.decoder0(output)
+		feat = torch.cat([RGB_D, Depth_D], dim=1)
+		output = self.conv(feat)
 
 		return output
 
 class Discriminator(nn.Module):
-	def __init__(self, input_nc, ndf, n_layers=3):
+	def __init__(self, ndf, n_layers=5):
 		super(Discriminator, self).__init__()
 
-		model = [nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=1),
+		model = [nn.Conv2d(1, ndf, kernel_size=4, stride=2, padding=1),
 		nn.LeakyReLU(0.2, True)]
 
 		out_dims = ndf
 		for i in range (n_layers):
 			in_dims = out_dims
 			out_dims = ndf * min(2 ** (i + 1), 8)
-			if i == n_layers - 1:
-				stride = 1
-			else:
-				stride = 2
-			model += [nn.Conv2d(in_dims, out_dims, kernel_size=4, stride=stride, padding=1),
-			nn.BatchNorm2d(out_dims),
+			
+			model += [nn.Conv2d(in_dims, out_dims, kernel_size=4, stride=2, padding=1),
 			nn.LeakyReLU(0.2, True)]
 
-		model += [nn.Conv2d(ndf * min(2 ** n_layers, 8), 1, kernel_size=4, stride=1, padding=1),
-		nn.Sigmoid()]
+		model += [nn.Conv2d(out_dims, 1, kernel_size=3, stride=1, padding=1)]
 
 		self.model = nn.Sequential(*model)
 
-	def forward(self, input1, input2):
-		input = torch.cat((input1, input2), dim=1)
-		output = self.model(input[:,:4,:,:])
+	def forward(self, x):
+		output = self.model(x)
 		return output
 
-class GANLoss(nn.Module):
-	def __init__(self, use_lsgan = False, target_real_label=1.0, target_fake_label=0.0,
-				 tensor = torch.FloatTensor):
-		super(GANLoss, self).__init__()
-		self.real_label = target_real_label
-		self.fake_label = target_fake_label
-		self.real_label_var = None
-		self.fake_label_var = None
-		self.Tensor = tensor
-		if use_lsgan:
-			self.loss = nn.MSELoss()
+class SaliencyGAN(nn.Module):
+	def __init__(self, args):
+		super(SaliencyGAN, self).__init__()
+
+		self.args = args
+		self.device = torch.device('cuda' if args.cuda else 'cpu')
+		self.generator = Generator(args.ngf)
+		self.discriminator = Discriminator(args.ndf)
+
+		self.generator.to(self.device)
+		self.discriminator.to(self.device)
+		
+		self.init_weights()
+
+	def init_weights(self):
+		for m in self.modules():
+			if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
+				nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+				if m.bias is not None:
+					m.bias.data.zero_()
+			elif isinstance(m, nn.BatchNorm2d):
+				m.weight.data.fill_(1)
+				m.bias.data.zero_()
+
+	def load_weights(self, checkpoint, mode='train', pretrained=False):
+		print("Load checkpoint from", checkpoint)
+		netG_model_path = '{}/netG_model_epoch_{:02d}.pth'.format(self.args.checkpoint, self.args.n_epochs)
+		netD_model_path = '{}/netD_model_epoch_{:02d}.pth'.format(self.args.checkpoint, self.args.n_epochs)
+		if pretrained:
+			netG_model_path = '{}/netG_model_pretrained.pth'.format(self.args.checkpoint)
+		if mode == 'train':
+			if os.path.exists(netG_model_path) and os.path.exists(netD_model_path):
+				G_state = torch.load(netG_model_path)
+				D_state = torch.load(netD_model_path)
+				self.generator.load_state_dict(G_state, strict=False)
+				self.discriminator.load_state_dict(D_state, strict=False)
+			else:
+				print('Check point is not exists...')
 		else:
-			self.loss = nn.BCELoss()
+			if os.path.exists(netG_model_path):
+				G_state = torch.load(netG_model_path)
+				self.generator.load_state_dict(G_state, strict=False)
+			else:
+				print('Check point is not exists...')
 
-	def get_target_tensor(self, input, target_is_real):
-		target_tensor = None
-		if target_is_real:
-			create_label = ((self.real_label_var is None) or
-							(self.real_label_var.numel() != input.numel()))
-			if create_label:
-				real_tensor = self.Tensor(input.size()).fill_(self.real_label)
-				self.real_label_var = Variable(real_tensor, requires_grad=False)
-			target_tensor = self.real_label_var
-		else:
-			create_label = ((self.fake_label_var is None) or
-							(self.fake_label_var.numel() != input.numel()))
-			if create_label:
-				fake_tensor = self.Tensor(input.size()).fill_(self.fake_label)
-				self.fake_label_var = Variable(fake_tensor, requires_grad=False)
-			target_tensor = self.fake_label_var
-		return target_tensor
+	def save_weights(self, log_dir, epoch):
+		netG_model = os.path.join(log_dir, 'netG_model_epoch_{:02d}.pth'.format(epoch))
+		netD_model = os.path.join(log_dir, 'netD_model_epoch_{:02d}.pth'.format(epoch))
+		torch.save(self.generator.state_dict(), netG_model)
+		torch.save(self.discriminator.state_dict(), netD_model)
 
-	def __call__(self, input, target_is_real):
-		target_tensor = self.get_target_tensor(input, target_is_real)
-		return self.loss(input, target_tensor.cuda())
+	def calc_gradient_penalty(self, real, fake):
+		alpha = torch.rand(real.size(0), 1, 1, 1).to(self.device)
+		x_hat = (alpha * real.data + (1 - alpha) * fake.data).requires_grad_(requires_grad=True)
+		
+		logits = self.discriminator(x_hat)
+		grad_outputs = torch.ones(logits.size()).to(self.device)
 
-class AdaptiveCELoss(nn.Module):
-	def __init__(self):
-		super(AdaptiveCELoss, self).__init__()
+		grads = torch.autograd.grad(outputs=logits,
+									inputs=x_hat,
+									grad_outputs=grad_outputs,
+									create_graph=True,
+									retain_graph=True,
+									only_inputs=True)[0]
+		grads = grads.view(logits.size(0), -1)
+		grads_norm = torch.sqrt(torch.sum(grads ** 2, dim=1))
+		
+		output = torch.mean((grads_norm - 1) ** 2)
+		return output
 
-	def forward(self, input, target):
-		b, _, w, h = target.size()
-		tsize = b * w * h
-		EPS  = 1e-12
-		beta_i = torch.sum(target[:,0,:,:]).item() / tsize
-		loss = -(((1 - beta_i) * (input[:,0,:,:] * (torch.log(target[:,0,:,:] + EPS)))) + ((beta_i) * ((1 - input[:,0,:,:]) * torch.log(torch.abs(1 - target[:,0,:,:] + EPS)))))
-		loss = torch.mean(loss)
+	def test_(self, dataloader):
+		with torch.no_grad():
+			for iteration, batch in enumerate(dataloader):
+				rgb = batch['RGB'].to(self.device)
+				depth = batch['Depth'].to(self.device)
 
-		return loss
+				output = self.generator(rgb, depth).data
+
+				save_image(output, self.args.output_dir + '/Saliency_map_%04d.png' % (iteration + 1))
+				print('Saliency maps {:04d} / {:04d}'.format(iteration + 1, len(dataloader)))
+			print('\n')
+
+	def train_(self, dataloader, optimizerG, optimizerD, logger):
+		device = torch.device('cuda' if self.args.cuda else 'cpu')
+		for iteration, batch in enumerate(dataloader):
+			rgb = batch['RGB'].to(self.device)
+			depth = batch['Depth'].to(self.device)
+			gt = batch['GT'].to(self.device)
+
+			# Update Discriminator
+
+			optimizerD.zero_grad()
+		
+			fake = self.generator(rgb, depth)
+			pred_fake = self.discriminator(fake.detach())
+			loss_d_fake = torch.mean(pred_fake)
+
+			pred_real = self.discriminator(gt)
+			loss_d_real = -torch.mean(pred_real)
+
+			loss_d_gp = self.calc_gradient_penalty(gt, fake)
+
+			loss_d = loss_d_fake + loss_d_real + self.args.lambda_gp * loss_d_gp
+
+			loss_d.backward()
+			optimizerD.step()
+
+			# Update Generator
+
+			optimizerG.zero_grad()
+
+			fake = self.generator(rgb, depth)
+			pred_fake = self.discriminator(fake)
+			loss_g_fake = -torch.mean(pred_fake)
+
+			loss_g_ce = F.binary_cross_entropy(fake, gt)
+
+			loss_g = loss_g_fake + self.args.lambda_g * loss_g_ce
+
+			loss_g.backward()
+			optimizerG.step()
+
+			logger.log(losses={'loss_d': loss_d, 'loss_d_fake': loss_d_fake, 'loss_d_real': loss_d_real, 'loss_d_gp': loss_d_gp,
+								'loss_g': loss_g, 'loss_g_fake': loss_g_fake, 'loss_g_ce': loss_g_ce},
+						images={'RGB': rgb, 'Depth': depth, 'GT': gt, 'Fake': fake})

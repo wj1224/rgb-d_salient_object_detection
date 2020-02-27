@@ -5,18 +5,19 @@ Two-stream network generates the pixel-wise saliency map and PatchGAN discrimina
 
 ## Requirements
 * Python 3
-* Pytorch >= 1.1
-* Numpy, PIL
+* Pytorch 1.4
+* Torchvision 0.5.0
+* Pillow
 
 ##  Experimental enviroment
 * Ubuntu 18.04
 * Nvidia Geforce GTX 1080Ti
-* [Pytorch 1.3 docker image](https://hub.docker.com/r/pytorch/pytorch/)
+* [Pytorch 1.4 docker image](https://hub.docker.com/r/pytorch/pytorch/)
 
 ## Getting started
 1. Clone this repository
    ```
-    git clone https://github.com/wonjjo/RGB-D_Salient_Object_Detection.git
+    git clone https://github.com/wj1224/rgb-d_salient_object_detection.git
    ```
    
 2. Prepare datasets
@@ -24,24 +25,26 @@ Two-stream network generates the pixel-wise saliency map and PatchGAN discrimina
     
 3. Training
     ```
-    cd RGB-D_Salient_Object_Detection
+    cd rgb-d_salient_object_detection
     python main.py \
         --mode train \
         --input_dir path/to/trainset \
         --output_dir path/to/logs \
         --max_epochs 100 \
+        --cuda \
         --[args]
+   ```
    See below for more args. 
-    ```
     
 4. Testing
     ```
     python main.py \
         --mode test \
         --input_dir path/to/testset \
-        --output_dir path/to/output_images \
+        --output_dir path/to/output_saliency_maps \
         --checkpoint path/to/saved_logs \
-        --n_epochs 100
+        --n_epochs 100 \
+        --cuda
     ```
     
 5. More details of args.
@@ -50,7 +53,6 @@ Two-stream network generates the pixel-wise saliency map and PatchGAN discrimina
     --mode ["train", "test] : train or test mode selection
     --input_dir [path/to/imgs] : Folder path which containing input images
     --output_dir [path/to/output] : Folder path to save logs in training or output images in testing
-    --tensorboard_dir [path/to/logs] : Folder path to save tensorboard logs
     --checkpoint  [path/to/logs] : Folder path to resume training or use for testing
     --n_epochs [100] : Load checkpoint from trained models with "n_epochs"
     --max_epochs [100] : Number of epochs in training step
@@ -59,34 +61,22 @@ Two-stream network generates the pixel-wise saliency map and PatchGAN discrimina
     --threds : Number of threds for data loading
     --ngf [64] : Number of filters on first convolution layer of the generator
     --ndf [16] : Number of filters on first convolution layer of the discriminator
-    --lr [0.0002] : Learning rate
-    --beta1 [0.9] : Mementum of Adam optimizer
-    --ce_weight [10.0] : Weight on CrossEntropyLoss term of loss function
-    --gan_weight[1.0] : Weight on GANLoss term of loss function
+    --lr [0.0002] : Learning rate of Adam optimizer
+    --beta1 [0.9] : Momentum of Adam optimizer
+    --lambda_g [10.0] : Weight on CrossEntropyLoss term of generator loss function
+    --lambda_gp[1.0] : Weight on gradient penalty term of discriminator loss function
     ```
     
 6. Pretrained model
-    If you want to testing with pretrained model, download [this](https://drive.google.com/file/d/1Rzn16s-E69E2BvYFH6DuTXxj3LnkNvJW/view?usp=sharing) and put it path/to/logs. The model was trained by using datasets as described in step 2. You can simply test the model with the following command.
+    If you want to testing with pretrained model, download [this](https://drive.google.com/open?id=1jJSekQN8LIkp7TGpZtPWvO02aV0bMFgn) and put it path/to/logs. The model was trained by using datasets as described in step 2. You can simply test the model with the following command.
     ```
-    cd RGB-D_Salient_Object_Detection
     python main.py \
         --mode test \
         --input_dir path/to/testset \
-        --output_dir path/to/output_images \
+        --output_dir path/to/output_saliency_maps \
         --checkpoint path/to/pretrained_model \
-        --pretrained
-    ```
-
-7. Running the code using Pytorch < 1.1
-    From Pytorch 1.1, TensorBoard has been officially supported. If you used Pytorch < 1.1, follow the below steps.
-    First, install the TensorboardX.
-    ```
-    pip install TensorboardX
-    ```
-    Second, modify line 18 in <text>utils.py</text>.
-    ```
-    del line 18: from torch.utils.tensorboard import SummaryWriter
-    new line 18: from tensorboardX import SummaryWriter
+        --pretrained \
+        --cuda
     ```
     
 ## Architecture
